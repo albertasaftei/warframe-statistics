@@ -1,65 +1,117 @@
-import Image from "next/image";
+import { Suspense } from "react";
+import { getTopItems, getAvailableTags, getLastUpdated } from "@/lib/queries";
+import type { SortColumn, SortDir } from "@/lib/queries";
+import { DashboardFilters } from "@/components/dashboard-filters";
+import { DashboardTable } from "@/components/dashboard-table";
+import { PaginationControls } from "@/components/pagination-controls";
 
-export default function Home() {
+export const revalidate = 3600;
+
+const validSortColumns: SortColumn[] = [
+  "name",
+  "waPrice",
+  "median",
+  "volume",
+  "totalValue",
+];
+const validSortDirs: SortDir[] = ["asc", "desc"];
+
+interface PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+function parseString(v: string | string[] | undefined): string | undefined {
+  if (Array.isArray(v)) return v[0];
+  return v;
+}
+
+function parseNumber(v: string | string[] | undefined): number | undefined {
+  const s = parseString(v);
+  if (!s) return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function parseTags(v: string | string[] | undefined): string[] {
+  if (!v) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+export default async function Home({ searchParams }: PageProps) {
+  const params = await searchParams;
+
+  const page = parseNumber(params.page) ?? 1;
+  const search = parseString(params.search);
+  const minPrice = parseNumber(params.minPrice);
+  const maxPrice = parseNumber(params.maxPrice);
+  const tags = parseTags(params.tags);
+  const rawSort = parseString(params.sortBy);
+  const rawDir = parseString(params.sortDir);
+  const sortBy: SortColumn = validSortColumns.includes(rawSort as SortColumn)
+    ? (rawSort as SortColumn)
+    : "volume";
+  const sortDir: SortDir = validSortDirs.includes(rawDir as SortDir)
+    ? (rawDir as SortDir)
+    : "desc";
+
+  const [result, availableTags, lastUpdated] = await Promise.all([
+    getTopItems({
+      page,
+      perPage: 25,
+      search,
+      minPrice,
+      maxPrice,
+      tags,
+      sortBy,
+      sortDir,
+    }),
+    getAvailableTags(),
+    getLastUpdated(),
+  ]);
+
+  const currentParams: Record<string, string | string[]> = {};
+  if (search) currentParams.search = search;
+  if (minPrice != null) currentParams.minPrice = minPrice.toString();
+  if (maxPrice != null) currentParams.maxPrice = maxPrice.toString();
+  if (tags.length > 0) currentParams.tags = tags;
+  if (page > 1) currentParams.page = page.toString();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        <header className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight">
+            Warframe Market Dashboard
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-muted-foreground mt-1">
+            Top traded items — last 7 days
+            {lastUpdated && (
+              <span className="ml-2 text-xs">· Updated {lastUpdated}</span>
+            )}
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        </header>
+
+        <Suspense>
+          <section className="mb-6">
+            <DashboardFilters availableTags={availableTags} />
+          </section>
+        </Suspense>
+
+        <DashboardTable
+          items={result.items}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          currentParams={currentParams}
+        />
+
+        <Suspense>
+          <PaginationControls
+            page={result.page}
+            perPage={result.perPage}
+            totalCount={result.totalCount}
+          />
+        </Suspense>
+      </div>
     </div>
   );
 }
