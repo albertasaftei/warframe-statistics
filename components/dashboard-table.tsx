@@ -18,6 +18,7 @@ interface DashboardTableProps {
   sortBy: SortColumn;
   sortDir: SortDir;
   currentParams: Record<string, string | string[]>;
+  startRank: number;
 }
 
 interface ColumnDef {
@@ -89,6 +90,7 @@ export function DashboardTable({
   sortBy,
   sortDir,
   currentParams,
+  startRank,
 }: DashboardTableProps) {
   if (items.length === 0) {
     return (
@@ -102,16 +104,23 @@ export function DashboardTable({
     <div className="rounded-lg border overflow-x-auto">
       <Table>
         <TableHeader>
-          <TableRow>
-            <TableHead className="w-12" />
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="w-10 text-right font-mono text-xs text-muted-foreground/40 pr-3">
+              #
+            </TableHead>
+            <TableHead className="w-14" />
             {columns.map((col) => (
               <TableHead
                 key={col.key}
-                className={col.align === "right" ? "text-right" : ""}
+                className={`${col.align === "right" ? "text-right" : ""} text-xs font-medium`}
               >
                 <Link
                   href={buildSortHref(col.key, sortBy, sortDir, currentParams)}
-                  className="inline-flex items-center hover:text-foreground transition-colors"
+                  className={`inline-flex items-center transition-colors ${
+                    col.key === sortBy
+                      ? "text-[#c8973e]"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
                   scroll={false}
                 >
                   {col.label}
@@ -126,40 +135,62 @@ export function DashboardTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell className="p-2">
-                {item.thumb ? (
-                  <Image
-                    src={`${ASSET_BASE}${item.thumb}`}
-                    alt={item.name}
-                    width={48}
-                    height={48}
-                    className="rounded"
-                    unoptimized
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded bg-muted" />
-                )}
-              </TableCell>
-              <TableCell className="font-medium">{item.name}</TableCell>
-              <TableCell className="text-right tabular-nums">
-                {item.waPrice.toFixed(1)}{" "}
-                <span className="text-muted-foreground text-xs">p</span>
-              </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {item.median.toFixed(1)}{" "}
-                <span className="text-muted-foreground text-xs">p</span>
-              </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {formatNumber(item.volume)}
-              </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {formatNumber(item.totalValue)}{" "}
-                <span className="text-muted-foreground text-xs">p</span>
-              </TableCell>
-            </TableRow>
-          ))}
+          {items.map((item, index) => {
+            const rank = startRank + index;
+            return (
+              <TableRow key={item.id} className="hover:bg-muted/30">
+                <TableCell className="text-right font-mono text-sm text-muted-foreground/40 pr-3 py-3">
+                  {rank}
+                </TableCell>
+                <TableCell className="py-3 pl-3 pr-2">
+                  {item.icon ? (
+                    <Image
+                      src={`${ASSET_BASE}${item.icon}`}
+                      alt={item.name}
+                      width={128}
+                      height={128}
+                      className="rounded"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded bg-muted" />
+                  )}
+                </TableCell>
+                <TableCell className="font-medium py-3 text-[15px]">
+                  {item.name}
+                </TableCell>
+                <TableCell className="text-right py-3">
+                  <span className="font-mono text-[15px]">
+                    {item.waPrice.toFixed(1)}
+                  </span>
+                  <span className="text-[#c8973e] text-xs ml-0.5 opacity-70">
+                    p
+                  </span>
+                </TableCell>
+                <TableCell className="text-right py-3">
+                  <span className="font-mono text-[15px]">
+                    {item.median.toFixed(1)}
+                  </span>
+                  <span className="text-[#c8973e] text-xs ml-0.5 opacity-70">
+                    p
+                  </span>
+                </TableCell>
+                <TableCell className="text-right py-3">
+                  <span className="font-mono text-[15px]">
+                    {formatNumber(item.volume)}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right py-3">
+                  <span className="font-mono text-[15px]">
+                    {formatNumber(item.totalValue)}
+                  </span>
+                  <span className="text-[#c8973e] text-xs ml-0.5 opacity-70">
+                    p
+                  </span>
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

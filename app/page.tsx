@@ -78,21 +78,23 @@ export default async function Home({ searchParams }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Warframe Market Dashboard
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
+        <header className="mb-10">
+          <h1 className="text-4xl font-semibold tracking-tight font-heading">
+            Warframe Market
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Top traded items — last 7 days
+          <p className="text-muted-foreground mt-3 text-base leading-relaxed">
+            Top traded items by volume — last 7 days
             {lastUpdated && (
-              <span className="ml-2 text-xs">· Updated {lastUpdated}</span>
+              <span className="ml-2 text-sm opacity-50">
+                · Updated {lastUpdated}
+              </span>
             )}
           </p>
         </header>
 
         <Suspense>
-          <section className="mb-6">
+          <section className="mb-8">
             <DashboardFilters availableTags={availableTags} />
           </section>
         </Suspense>
@@ -102,6 +104,7 @@ export default async function Home({ searchParams }: PageProps) {
           sortBy={sortBy}
           sortDir={sortDir}
           currentParams={currentParams}
+          startRank={(result.page - 1) * result.perPage + 1}
         />
 
         <Suspense>

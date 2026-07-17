@@ -63,7 +63,7 @@ async function main() {
       id: item.id,
       slug: item.slug,
       name: item.i18n.en.name,
-      thumb: item.i18n.en.thumb ?? null,
+      thumb: item.i18n.en.icon ?? null,
       tags: item.tags,
       maxRank: item.maxRank ?? null,
       ducats: item.ducats ?? null,
