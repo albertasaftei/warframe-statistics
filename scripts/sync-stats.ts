@@ -52,10 +52,15 @@ function getCutoffDate(): string {
 }
 
 function aggregateByDateAndRank(entries: StatEntry[]): AggregatedStat[] {
-  // Group by (date, mod_rank) — use -1 as sentinel for items with no rank
+  // If any entry has a mod_rank, this is a ranked item.
+  // Filter out rank-less entries for ranked items — those are summary/legacy rows.
+  const hasRanks = entries.some((e) => e.mod_rank != null);
+  const working = hasRanks ? entries.filter((e) => e.mod_rank != null) : entries;
+
+  // Group by (date, mod_rank) — use -1 as sentinel for items with no rank system
   const groups = new Map<string, StatEntry[]>();
 
-  for (const entry of entries) {
+  for (const entry of working) {
     const date = getDateString(entry.datetime);
     const rank = entry.mod_rank ?? -1;
     const key = `${date}|${rank}`;

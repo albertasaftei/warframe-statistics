@@ -138,7 +138,7 @@ export function DashboardTable({
           {items.map((item, index) => {
             const rank = startRank + index;
             return (
-              <TableRow key={item.id} className="hover:bg-muted/30">
+              <TableRow key={`${item.id}-${item.modRank}-${index}`} className="hover:bg-muted/30">
                 <TableCell className="text-right font-mono text-sm text-muted-foreground/40 pr-3 py-3">
                   {rank}
                 </TableCell>
@@ -160,7 +160,7 @@ export function DashboardTable({
                   <span>{item.name}</span>
                   {item.modRank >= 0 && (
                     <span className="ml-2 text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                      R{item.modRank}
+                      Rank {item.modRank}
                     </span>
                   )}
                 </TableCell>
