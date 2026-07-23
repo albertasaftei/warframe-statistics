@@ -27,6 +27,7 @@ export interface DashboardItem {
   name: string;
   thumb: string | null;
   tags: string[];
+  modRank: number;
   volume: number;
   waPrice: number;
   median: number;
@@ -114,7 +115,7 @@ export async function getTopItems(
 
   const countQuery = db
     .select({
-      count: sql<number>`COUNT(DISTINCT ${items.id})`,
+      count: sql<number>`COUNT(DISTINCT (${items.id}, ${dailyStats.modRank}))`,
     })
     .from(items)
     .innerJoin(dailyStats, sql`${items.id} = ${dailyStats.itemId}`)
@@ -127,6 +128,7 @@ export async function getTopItems(
       name: items.name,
       thumb: items.thumb,
       tags: items.tags,
+      modRank: dailyStats.modRank,
       volume: volumeSum,
       waPrice: waPriceAvg,
       median: medianAvg,
@@ -135,7 +137,14 @@ export async function getTopItems(
     .from(items)
     .innerJoin(dailyStats, sql`${items.id} = ${dailyStats.itemId}`)
     .where(whereClause)
-    .groupBy(items.id, items.slug, items.name, items.thumb, items.tags)
+    .groupBy(
+      items.id,
+      items.slug,
+      items.name,
+      items.thumb,
+      items.tags,
+      dailyStats.modRank,
+    )
     .orderBy(orderDir)
     .limit(perPage)
     .offset(offset);
@@ -149,6 +158,7 @@ export async function getTopItems(
       name: row.name,
       thumb: row.thumb,
       tags: row.tags as string[],
+      modRank: row.modRank,
       volume: Number(row.volume),
       waPrice: Math.round(Number(row.waPrice) * 100) / 100,
       median: Math.round(Number(row.median) * 100) / 100,

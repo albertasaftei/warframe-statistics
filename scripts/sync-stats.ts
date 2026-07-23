@@ -31,6 +31,7 @@ interface StatsResponse {
 
 interface AggregatedStat {
   date: string;
+  modRank: number;
   volume: number;
   minPrice: number;
   maxPrice: number;
@@ -50,20 +51,25 @@ function getCutoffDate(): string {
   return d.toISOString().split("T")[0];
 }
 
-function aggregateByDate(entries: StatEntry[]): AggregatedStat[] {
-  const byDate = new Map<string, StatEntry[]>();
+function aggregateByDateAndRank(entries: StatEntry[]): AggregatedStat[] {
+  // Group by (date, mod_rank) — use -1 as sentinel for items with no rank
+  const groups = new Map<string, StatEntry[]>();
 
   for (const entry of entries) {
     const date = getDateString(entry.datetime);
-    const existing = byDate.get(date) ?? [];
+    const rank = entry.mod_rank ?? -1;
+    const key = `${date}|${rank}`;
+    const existing = groups.get(key) ?? [];
     existing.push(entry);
-    byDate.set(date, existing);
+    groups.set(key, existing);
   }
 
   const aggregated: AggregatedStat[] = [];
 
-  for (const [date, dayEntries] of byDate) {
-    const totalVolume = dayEntries.reduce((sum, e) => sum + e.volume, 0);
+  for (const [, groupEntries] of groups) {
+    const date = getDateString(groupEntries[0].datetime);
+    const modRank = groupEntries[0].mod_rank ?? -1;
+    const totalVolume = groupEntries.reduce((sum, e) => sum + e.volume, 0);
     if (totalVolume === 0) continue;
 
     let weightedWaPrice = 0;
@@ -71,7 +77,7 @@ function aggregateByDate(entries: StatEntry[]): AggregatedStat[] {
     let weightedAvgPrice = 0;
     let weightedMovingAvg = 0;
 
-    for (const e of dayEntries) {
+    for (const e of groupEntries) {
       const weight = e.volume / totalVolume;
       weightedWaPrice += e.wa_price * weight;
       weightedMedian += e.median * weight;
@@ -81,9 +87,10 @@ function aggregateByDate(entries: StatEntry[]): AggregatedStat[] {
 
     aggregated.push({
       date,
+      modRank,
       volume: totalVolume,
-      minPrice: Math.min(...dayEntries.map((e) => e.min_price)),
-      maxPrice: Math.max(...dayEntries.map((e) => e.max_price)),
+      minPrice: Math.min(...groupEntries.map((e) => e.min_price)),
+      maxPrice: Math.max(...groupEntries.map((e) => e.max_price)),
       avgPrice: Math.round(weightedAvgPrice * 1000) / 1000,
       waPrice: Math.round(weightedWaPrice * 1000) / 1000,
       median: Math.round(weightedMedian * 1000) / 1000,
@@ -132,8 +139,8 @@ async function main() {
     process.exit(1);
   }
 
-  const sql = neon(postgresUrl);
-  const db = drizzle(sql, { schema });
+  const neonClient = neon(postgresUrl);
+  const db = drizzle(neonClient, { schema });
 
   console.log("Reading items from database...");
   const allItems = await db
@@ -185,7 +192,7 @@ async function main() {
 
         if (recentEntries.length === 0) return 0;
 
-        const aggregated = aggregateByDate(recentEntries);
+        const aggregated = aggregateByDateAndRank(recentEntries);
 
         for (const stat of aggregated) {
           await db
@@ -193,6 +200,7 @@ async function main() {
             .values({
               itemId: item.id,
               date: stat.date,
+              modRank: stat.modRank,
               volume: stat.volume,
               minPrice: stat.minPrice.toString(),
               maxPrice: stat.maxPrice.toString(),
@@ -202,7 +210,11 @@ async function main() {
               movingAvg: stat.movingAvg.toString(),
             })
             .onConflictDoUpdate({
-              target: [schema.dailyStats.itemId, schema.dailyStats.date],
+              target: [
+                schema.dailyStats.itemId,
+                schema.dailyStats.date,
+                schema.dailyStats.modRank,
+              ],
               set: {
                 volume: stat.volume,
                 minPrice: stat.minPrice.toString(),

@@ -157,7 +157,12 @@ export function DashboardTable({
                   )}
                 </TableCell>
                 <TableCell className="font-medium py-3 text-[15px]">
-                  {item.name}
+                  <span>{item.name}</span>
+                  {item.modRank >= 0 && (
+                    <span className="ml-2 text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      R{item.modRank}
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell className="text-right py-3">
                   <span className="font-mono text-[15px]">

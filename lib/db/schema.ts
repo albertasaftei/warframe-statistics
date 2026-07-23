@@ -29,6 +29,7 @@ export const dailyStats = pgTable(
       .notNull()
       .references(() => items.id, { onDelete: "cascade" }),
     date: date("date").notNull(),
+    modRank: integer("mod_rank").notNull().default(-1),
     volume: integer("volume").notNull().default(0),
     minPrice: numeric("min_price"),
     maxPrice: numeric("max_price"),
@@ -38,7 +39,11 @@ export const dailyStats = pgTable(
     movingAvg: numeric("moving_avg"),
   },
   (table) => [
-    uniqueIndex("daily_stats_item_date_idx").on(table.itemId, table.date),
+    uniqueIndex("daily_stats_item_date_rank_idx").on(
+      table.itemId,
+      table.date,
+      table.modRank,
+    ),
   ],
 );
 
