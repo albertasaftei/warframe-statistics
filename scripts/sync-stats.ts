@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
+import { lt } from "drizzle-orm";
 import * as schema from "../lib/db/schema";
 
 const STATS_API_BASE = "https://api.warframe.market/v1/items";
@@ -149,6 +150,12 @@ async function main() {
   console.log(
     `Fetching stats for the last ${DAYS_TO_KEEP} days (since ${cutoffDate})`,
   );
+
+  // Delete rows older than the retention window to keep the table lean
+  await db
+    .delete(schema.dailyStats)
+    .where(lt(schema.dailyStats.date, cutoffDate));
+  console.log(`Deleted stale rows older than ${cutoffDate}`);
 
   let processed = 0;
   let totalStatsWritten = 0;
