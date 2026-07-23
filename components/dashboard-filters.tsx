@@ -134,7 +134,7 @@ export function DashboardFilters({ availableTags }: DashboardFiltersProps) {
         <div className="flex items-center gap-1.5">
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger
-              className={`flex h-10 items-center gap-2 rounded-md border px-3 text-[15px] transition-colors min-w-[160px] ${
+              className={`flex h-10 items-center gap-2 rounded-md border px-3 text-[15px] transition-colors min-w-[160px] cursor-pointer ${
                 selectedTags.length > 0
                   ? "border-[#c8973e]/60 text-foreground"
                   : "border-input text-muted-foreground hover:text-foreground"
@@ -165,7 +165,7 @@ export function DashboardFilters({ availableTags }: DashboardFiltersProps) {
                         key={tag}
                         value={tag}
                         onSelect={() => toggleTag(tag)}
-                        className="text-[14px] cursor-pointer"
+                        className="text-[14px] capitalize cursor-pointer"
                       >
                         <Check
                           className={`mr-2 h-4 w-4 shrink-0 ${
@@ -186,7 +186,7 @@ export function DashboardFilters({ availableTags }: DashboardFiltersProps) {
           {selectedTags.length > 0 && (
             <button
               onClick={clearTags}
-              className="flex h-10 w-10 items-center justify-center rounded-md border border-input text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              className="flex h-10 w-10 items-center justify-center rounded-md border border-input text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-pointer"
               title="Clear filters"
             >
               <X className="h-4 w-4" />

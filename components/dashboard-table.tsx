@@ -142,10 +142,10 @@ export function DashboardTable({
                 <TableCell className="text-right font-mono text-sm text-muted-foreground/40 pr-3 py-3">
                   {rank}
                 </TableCell>
-                <TableCell className="py-3 pl-3 pr-2">
-                  {item.icon ? (
+                <TableCell className="py-3 pl-3 pr-2 md:w-[100px]">
+                  {item.thumb ? (
                     <Image
-                      src={`${ASSET_BASE}${item.icon}`}
+                      src={`${ASSET_BASE}${item.thumb}`}
                       alt={item.name}
                       width={128}
                       height={128}
