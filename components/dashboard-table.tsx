@@ -1,3 +1,5 @@
+'use client'
+
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -8,8 +10,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, BookOpen, ShoppingCart } from "lucide-react";
 import type { DashboardItem, SortColumn, SortDir } from "@/lib/queries";
+import { slugToWikiName } from "@/lib/utils";
 
 const ASSET_BASE = "https://warframe.market/static/assets/";
 
@@ -157,12 +160,32 @@ export function DashboardTable({
                   )}
                 </TableCell>
                 <TableCell className="font-medium py-3 text-[15px]">
-                  <span>{item.name}</span>
-                  {item.modRank >= 0 && (
-                    <span className="ml-2 text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                      Rank {item.modRank}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <span>{item.name}</span>
+                    {item.modRank >= 0 && (
+                      <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                        Rank {item.modRank}
+                      </span>
+                    )}
+                    <a
+                      href={`https://wiki.warframe.com/w/${slugToWikiName(item.slug)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-1 text-muted-foreground hover:text-foreground transition-colors"
+                      title="Open in Warframe Wiki"
+                    >
+                      <BookOpen className="h-3.5 w-3.5" />
+                    </a>
+                    <a
+                      href={`https://warframe.market/items/${item.slug}?type=sell`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      title="View on Warframe Market"
+                    >
+                      <ShoppingCart className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
                 </TableCell>
                 <TableCell className="text-right py-3">
                   <span className="font-mono text-[15px]">
