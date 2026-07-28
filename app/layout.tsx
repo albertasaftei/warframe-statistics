@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Space_Grotesk } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const geistMono = Geist_Mono({
@@ -80,6 +81,7 @@ export default function RootLayout({
           style={{ background: "#c8973e" }}
         />
         {children}
+        <Analytics />
       </body>
     </html>
   );
