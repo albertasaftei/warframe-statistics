@@ -102,7 +102,7 @@ export function DashboardTable({
 
   return (
     <div className="rounded-lg border overflow-x-auto">
-      <Table>
+      <Table className="min-w-[640px]">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="w-10 text-right font-mono text-xs text-muted-foreground/40 pr-3">
