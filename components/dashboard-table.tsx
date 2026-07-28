@@ -141,7 +141,7 @@ export function DashboardTable({
           {items.map((item, index) => {
             const rank = startRank + index;
             return (
-              <TableRow key={`${item.id}-${item.modRank}-${index}`} className="hover:bg-muted/30">
+              <TableRow key={`${item.id}-${item.modRank}-${index}`} className={`hover:bg-muted/30 ${index % 2 === 1 ? "bg-muted/20" : ""}`}>
                 <TableCell className="text-right text-sm text-muted-foreground/40 pr-3 py-3">
                   {rank}
                 </TableCell>
