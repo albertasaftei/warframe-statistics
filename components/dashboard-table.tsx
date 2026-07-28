@@ -108,7 +108,7 @@ export function DashboardTable({
       <Table className="min-w-[640px]">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-10 text-right font-mono text-xs text-muted-foreground/40 pr-3">
+            <TableHead className="w-10 text-right text-xs text-muted-foreground/40 pr-3">
               #
             </TableHead>
             <TableHead className="w-14" />
@@ -142,7 +142,7 @@ export function DashboardTable({
             const rank = startRank + index;
             return (
               <TableRow key={`${item.id}-${item.modRank}-${index}`} className="hover:bg-muted/30">
-                <TableCell className="text-right font-mono text-sm text-muted-foreground/40 pr-3 py-3">
+                <TableCell className="text-right text-sm text-muted-foreground/40 pr-3 py-3">
                   {rank}
                 </TableCell>
                 <TableCell className="py-3 pl-3 pr-2 md:w-[100px]">
@@ -163,7 +163,7 @@ export function DashboardTable({
                   <div className="flex items-center gap-2">
                     <span>{item.name}</span>
                     {item.modRank >= 0 && (
-                      <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                         Rank {item.modRank}
                       </span>
                     )}
@@ -177,7 +177,7 @@ export function DashboardTable({
                       <BookOpen className="h-3.5 w-3.5" />
                     </a>
                     <a
-                      href={`https://warframe.market/items/${item.slug}?type=sell`}
+                      href={`https://warframe.market/items/${item.slug}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-muted-foreground hover:text-foreground transition-colors"
@@ -188,33 +188,27 @@ export function DashboardTable({
                   </div>
                 </TableCell>
                 <TableCell className="text-right py-3">
-                  <span className="font-mono text-[15px]">
+                  <span className="font-bold text-[15px]">
                     {item.waPrice.toFixed(1)}
                   </span>
-                  <span className="text-[#c8973e] text-xs ml-0.5 opacity-70">
-                    p
-                  </span>
+   
                 </TableCell>
-                <TableCell className="text-right py-3">
-                  <span className="font-mono text-[15px]">
+                <TableCell className="font-bold text-right py-3">
+                  <span className="text-[15px]">
                     {item.median.toFixed(1)}
                   </span>
-                  <span className="text-[#c8973e] text-xs ml-0.5 opacity-70">
-                    p
-                  </span>
+
                 </TableCell>
-                <TableCell className="text-right py-3">
-                  <span className="font-mono text-[15px]">
+                <TableCell className="font-bold text-right py-3">
+                  <span className="text-[15px]">
                     {formatNumber(item.volume)}
                   </span>
                 </TableCell>
-                <TableCell className="text-right py-3">
-                  <span className="font-mono text-[15px]">
+                <TableCell className="font-bold text-right py-3">
+                  <span className="text-[15px]">
                     {formatNumber(item.totalValue)}
                   </span>
-                  <span className="text-[#c8973e] text-xs ml-0.5 opacity-70">
-                    p
-                  </span>
+
                 </TableCell>
               </TableRow>
             );
