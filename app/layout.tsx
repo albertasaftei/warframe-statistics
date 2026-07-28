@@ -14,8 +14,54 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Warframe Market Dashboard",
-  description: "Track top traded items and price trends from Warframe Market",
+  title: {
+    default: "Warframe Market Dashboard",
+    template: "%s | Warframe Market Dashboard",
+  },
+  description:
+    "Track Warframe Market item prices, trading volumes, and platinum price trends. Find the best items to trade and maximize your platinum earnings.",
+  keywords: [
+    "warframe market",
+    "warframe prices",
+    "warframe trading",
+    "warframe platinum",
+    "warframe item prices",
+    "warframe market tracker",
+    "warframe trading statistics",
+    "warframe market trends",
+    "warframe price history",
+    "warframe trading guide",
+    "warframe most sold items",
+    "warframe most bought items",
+    "warframe trading volume",
+    "wf market",
+  ],
+  authors: [{ name: "Warframe Market Dashboard" }],
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-snippet": -1,
+      "max-image-preview": "large",
+      "max-video-preview": -1,
+    },
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    title: "Warframe Market Dashboard",
+    description:
+      "Track Warframe Market item prices, trading volumes, and platinum price trends. Find the best items to trade and maximize your platinum earnings.",
+    siteName: "Warframe Market Dashboard",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Warframe Market Dashboard",
+    description:
+      "Track Warframe Market item prices, trading volumes, and platinum price trends.",
+  },
 };
 
 export default function RootLayout({
