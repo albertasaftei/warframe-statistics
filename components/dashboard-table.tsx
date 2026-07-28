@@ -145,7 +145,7 @@ export function DashboardTable({
                 <TableCell className="text-right text-sm text-muted-foreground/40 pr-3 py-3">
                   {rank}
                 </TableCell>
-                <TableCell className="py-3 pl-3 pr-2 md:w-[100px]">
+                <TableCell className="py-3 pl-3 pr-2 min-w-[50px] md:w-[100px]">
                   {item.thumb ? (
                     <Image
                       src={`${ASSET_BASE}${item.thumb}`}
