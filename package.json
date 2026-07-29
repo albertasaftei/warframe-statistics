@@ -1,7 +1,7 @@
 {
   "name": "warframe-statistics",
   "version": "0.1.0",
-  "private": true,
+  "description": "Warframe dashboard to visualize the most traded items in the last 7 days.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
