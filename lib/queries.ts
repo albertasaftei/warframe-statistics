@@ -32,6 +32,8 @@ export interface DashboardItem {
   waPrice: number;
   median: number;
   totalValue: number;
+  /** Display rank within the current filtered+paginated result set. */
+  rank: number;
 }
 
 export interface GetTopItemsResult {
@@ -39,6 +41,8 @@ export interface GetTopItemsResult {
   totalCount: number;
   page: number;
   perPage: number;
+  /** Maps "${id}-${modRank}" → medal position (1 | 2 | 3) for the unfiltered top-3 by current sort. */
+  top3Keys: Record<string, 1 | 2 | 3>;
 }
 
 export async function getTopItems(
@@ -113,6 +117,17 @@ export async function getTopItems(
 
   const offset = (page - 1) * perPage;
 
+  // Top-3 uses only the date cutoff — no search/price/tag filters — so medals
+  // always reflect the globally best items by the current sort metric.
+  const top3Query = db
+    .select({ id: items.id, modRank: dailyStats.modRank })
+    .from(items)
+    .innerJoin(dailyStats, sql`${items.id} = ${dailyStats.itemId}`)
+    .where(gte(dailyStats.date, cutoff))
+    .groupBy(items.id, dailyStats.modRank)
+    .orderBy(orderDir)
+    .limit(3);
+
   const countQuery = db
     .select({
       count: sql<number>`COUNT(DISTINCT (${items.id}, ${dailyStats.modRank}))`,
@@ -149,10 +164,15 @@ export async function getTopItems(
     .limit(perPage)
     .offset(offset);
 
-  const [countResult, dataResult] = await Promise.all([countQuery, dataQuery]);
+  const [countResult, dataResult, top3Result] = await Promise.all([countQuery, dataQuery, top3Query]);
+
+  const top3Keys: Record<string, 1 | 2 | 3> = {};
+  top3Result.forEach((row, i) => {
+    top3Keys[`${row.id}-${row.modRank}`] = (i + 1) as 1 | 2 | 3;
+  });
 
   return {
-    items: dataResult.map((row) => ({
+    items: dataResult.map((row, i) => ({
       id: row.id,
       slug: row.slug,
       name: row.name,
@@ -163,10 +183,12 @@ export async function getTopItems(
       waPrice: Math.round(Number(row.waPrice) * 100) / 100,
       median: Math.round(Number(row.median) * 100) / 100,
       totalValue: Math.round(Number(row.totalValue)),
+      rank: offset + i + 1,
     })),
     totalCount: Number(countResult[0]?.count ?? 0),
     page,
     perPage,
+    top3Keys,
   };
 }
 

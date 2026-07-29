@@ -21,7 +21,7 @@ interface DashboardTableProps {
   sortBy: SortColumn;
   sortDir: SortDir;
   currentParams: Record<string, string | string[]>;
-  startRank: number;
+  top3Keys: Record<string, 1 | 2 | 3>;
 }
 
 interface ColumnDef {
@@ -88,12 +88,52 @@ function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
+const MEDAL = {
+  1: {
+    bg: "linear-gradient(135deg, #FFE066 0%, #F59E0B 100%)",
+    shadow: "0 0 12px rgba(255,215,0,0.55), 0 2px 4px rgba(0,0,0,0.4)",
+    color: "#5a3a00",
+    rowBg: "linear-gradient(90deg, rgba(255,215,0,0.09) 0%, rgba(255,215,0,0.03) 30%, transparent 60%)",
+    border: "#FFD700",
+    nameColor: "text-amber-300",
+  },
+  2: {
+    bg: "linear-gradient(135deg, #F0F0F0 0%, #9CA3AF 100%)",
+    shadow: "0 0 12px rgba(192,192,192,0.5), 0 2px 4px rgba(0,0,0,0.4)",
+    color: "#1f2937",
+    rowBg: "linear-gradient(90deg, rgba(192,192,192,0.08) 0%, rgba(192,192,192,0.02) 30%, transparent 60%)",
+    border: "#C0C0C0",
+    nameColor: "text-slate-300",
+  },
+  3: {
+    bg: "linear-gradient(135deg, #E8A060 0%, #92400E 100%)",
+    shadow: "0 0 12px rgba(205,127,50,0.5), 0 2px 4px rgba(0,0,0,0.4)",
+    color: "#fff",
+    rowBg: "linear-gradient(90deg, rgba(205,127,50,0.09) 0%, rgba(205,127,50,0.03) 30%, transparent 60%)",
+    border: "#CD7F32",
+    nameColor: "text-orange-300",
+  },
+} as const;
+
+function MedalBadge({ rank }: { rank: number }) {
+  const cfg = MEDAL[rank as keyof typeof MEDAL];
+  if (!cfg) return <span className="text-muted-foreground/40 text-sm">{rank}</span>;
+  return (
+    <div
+      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ml-auto select-none"
+      style={{ background: cfg.bg, boxShadow: cfg.shadow, color: cfg.color }}
+    >
+      {rank}
+    </div>
+  );
+}
+
 export function DashboardTable({
   items,
   sortBy,
   sortDir,
   currentParams,
-  startRank,
+  top3Keys,
 }: DashboardTableProps) {
   if (items.length === 0) {
     return (
@@ -139,11 +179,25 @@ export function DashboardTable({
         </TableHeader>
         <TableBody>
           {items.map((item, index) => {
-            const rank = startRank + index;
+            const medalRank = top3Keys[`${item.id}-${item.modRank}`];
+            const medal = medalRank !== undefined ? MEDAL[medalRank] : null;
+            const rowStyle = medal
+              ? { background: medal.rowBg, borderLeft: `3px solid ${medal.border}` }
+              : {};
             return (
-              <TableRow key={`${item.id}-${item.modRank}-${index}`} className={`hover:bg-muted/30 ${index % 2 === 1 ? "bg-muted/20" : ""}`}>
-                <TableCell className="text-right text-sm text-muted-foreground/40 pr-3 py-3">
-                  {rank}
+              <TableRow
+                key={`${item.id}-${item.modRank}-${index}`}
+                className={`hover:bg-muted/30 ${
+                  !medal && index % 2 === 1 ? "bg-muted/20" : ""
+                }`}
+                style={rowStyle}
+              >
+                <TableCell className="text-right text-sm pr-3 py-3">
+                  {medal ? (
+                    <MedalBadge rank={medalRank!} />
+                  ) : (
+                    <span className="text-muted-foreground/40">{item.rank}</span>
+                  )}
                 </TableCell>
                 <TableCell className="py-3 pl-3 pr-2 min-w-[50px] md:w-[100px]">
                   {item.thumb ? (
@@ -161,7 +215,7 @@ export function DashboardTable({
                 </TableCell>
                 <TableCell className="font-medium py-3 text-[15px]">
                   <div className="flex items-center gap-2">
-                    <span>{item.name}</span>
+                    <span className={medal?.nameColor ?? ""}>{item.name}</span>
                     {item.modRank >= 0 && (
                       <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                         Rank {item.modRank}

@@ -104,7 +104,7 @@ export default async function Home({ searchParams }: PageProps) {
           sortBy={sortBy}
           sortDir={sortDir}
           currentParams={currentParams}
-          startRank={(result.page - 1) * result.perPage + 1}
+          top3Keys={result.top3Keys}
         />
 
         <Suspense>

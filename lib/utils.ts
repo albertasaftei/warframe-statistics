@@ -21,7 +21,6 @@ export function slugToWikiName(slug: string): string {
   let s = slug.toLowerCase();
 
   for (const suffix of SLUG_STRIP_SUFFIXES) {
-    console.log(`Checking if "${s}" ends with "${suffix}"`);
     if (s.endsWith(suffix)) {
       s = s.slice(0, s.length - suffix.length);
       break;
