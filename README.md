@@ -14,4 +14,4 @@ A dashboard for tracking the most traded items on [Warframe Market](https://warf
 
 ## Keeping data fresh
 
-Add `POSTGRES_URL` as a secret in your GitHub repository. The `sync-stats` workflow runs automatically every day at 2 AM UTC. To sync items when new ones are added to the game, trigger the `sync-items` workflow manually from the Actions tab.
+Add `POSTGRES_URL` as a secret in your GitHub repository. The `sync-stats` workflow runs automatically every two days at 2 AM UTC. To sync items when new ones are added to the game, trigger the `sync-items` workflow manually from the Actions tab.
