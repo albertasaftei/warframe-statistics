@@ -14,8 +14,6 @@ import { ArrowDown, ArrowUp, ArrowUpDown, BookOpen, ShoppingCart } from "lucide-
 import type { DashboardItem, SortColumn, SortDir } from "@/lib/queries";
 import { slugToWikiName } from "@/lib/utils";
 
-const ASSET_BASE = "https://warframe.market/static/assets/";
-
 interface DashboardTableProps {
   items: DashboardItem[];
   sortBy: SortColumn;
@@ -202,12 +200,13 @@ export function DashboardTable({
                 <TableCell className="py-3 pl-3 pr-2 min-w-[50px] md:w-[100px]">
                   {item.thumb ? (
                     <Image
-                      src={`${ASSET_BASE}${item.thumb}`}
+                      src={`/api/assets/${item.thumb}`}
                       alt={item.name}
                       width={128}
                       height={128}
                       className="rounded"
                       unoptimized
+                      loading={index < 8 ? "eager" : "lazy"}
                     />
                   ) : (
                     <div className="w-16 h-16 rounded bg-muted" />
