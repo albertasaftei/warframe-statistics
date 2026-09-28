@@ -29,3 +29,8 @@ export function slugToWikiName(slug: string): string {
 
   return s.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
+
+export function slugToWikiImageUrl(slug: string): string {
+  const fileName = slugToWikiName(slug).replace(/[^a-zA-Z0-9]/g, '');
+  return `https://wiki.warframe.com/images/thumb/${fileName}.png/128px-${fileName}.png`;
+}

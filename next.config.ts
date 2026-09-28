@@ -1,15 +1,5 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "warframe.market",
-        pathname: "/static/assets/**",
-      },
-    ],
-  },
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

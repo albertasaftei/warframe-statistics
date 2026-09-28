@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { ArrowDown, ArrowUp, ArrowUpDown, BookOpen, ShoppingCart } from "lucide-react";
 import type { DashboardItem, SortColumn, SortDir } from "@/lib/queries";
-import { slugToWikiName } from "@/lib/utils";
+import { slugToWikiImageUrl, slugToWikiName } from "@/lib/utils";
 
 interface DashboardTableProps {
   items: DashboardItem[];
@@ -200,7 +200,7 @@ export function DashboardTable({
                 <TableCell className="py-3 pl-3 pr-2 min-w-[50px] md:w-[100px]">
                   {item.thumb ? (
                     <Image
-                      src={`/api/assets/${item.thumb}`}
+                      src={slugToWikiImageUrl(item.slug)}
                       alt={item.name}
                       width={128}
                       height={128}
