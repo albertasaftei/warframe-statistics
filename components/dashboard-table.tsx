@@ -182,6 +182,10 @@ export function DashboardTable({
             const rowStyle = medal
               ? { background: medal.rowBg, borderLeft: `3px solid ${medal.border}` }
               : {};
+            const isMod = item.tags?.includes('mod') && !item.tags?.includes('riven_mod');
+
+            console.log(item);
+
             return (
               <TableRow
                 key={`${item.id}-${item.modRank}-${index}`}
@@ -200,7 +204,7 @@ export function DashboardTable({
                 <TableCell className="py-3 pl-3 pr-2 min-w-[50px] md:w-[100px]">
                   {item.thumb ? (
                     <Image
-                      src={slugToWikiImageUrl(item.slug)}
+                      src={slugToWikiImageUrl(item.slug, isMod)}
                       alt={item.name}
                       width={128}
                       height={128}
@@ -209,7 +213,9 @@ export function DashboardTable({
                       loading={index < 8 ? "eager" : "lazy"}
                     />
                   ) : (
-                    <div className="w-16 h-16 rounded bg-muted" />
+                    <div className="w-24 h-24 rounded bg-muted flex items-center justify-center">
+                      <span className="text-muted-foreground">No Image</span>
+                    </div>
                   )}
                 </TableCell>
                 <TableCell className="font-medium py-3 text-[15px]">
