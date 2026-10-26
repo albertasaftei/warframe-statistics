@@ -17,6 +17,16 @@ const SLUG_STRIP_SUFFIXES = [
   "_(veiled)",
 ];
 
+const GENERIC_IMAGE_NAMES: Record<string, string> = {
+  _barrel: "GenericGunPrimeBarrel",
+  _stock: "GenericGunPrimeStock",
+  _receiver: "GenericGunPrimeReceiver",
+  _blade: "GenericWeaponPrimeBlade",
+  _handle: "GenericWeaponPrimeHilt",
+  _hilt: "GenericWeaponPrimeHilt",
+  _ornament: "GenericComponentPrimePlug",
+};
+
 export function slugToWikiName(slug: string): string {
   let s = slug.toLowerCase();
 
@@ -34,21 +44,12 @@ export function slugToWikiName(slug: string): string {
 }
 
 export function slugToWikiImageUrl(slug: string, isMod?: boolean): string {
-  const genericImageNames: Record<string, string> = {
-    _barrel: "GenericGunPrimeBarrel",
-    _stock: "GenericGunPrimeStock",
-    _receiver: "GenericGunPrimeReceiver",
-    _blade: "GenericWeaponPrimeBlade",
-    _handle: "GenericWeaponPrimeHilt",
-    _hilt: "GenericWeaponPrimeHilt",
-    _ornament: "GenericComponentPrimePlug",
-  };
-  const matchingSuffix = Object.keys(genericImageNames).find((suffix) =>
+  const matchingSuffix = Object.keys(GENERIC_IMAGE_NAMES).find((suffix) =>
     slug.toLowerCase().endsWith(suffix),
   );
 
   let fileName = matchingSuffix
-    ? genericImageNames[matchingSuffix]
+    ? GENERIC_IMAGE_NAMES[matchingSuffix]
     : slugToWikiName(slug).replace(/[^a-zA-Z0-9]/g, "");
 
   if (isMod && !matchingSuffix) {
