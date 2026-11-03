@@ -4,7 +4,7 @@ import { lt } from "drizzle-orm";
 import * as schema from "../lib/db/schema";
 
 const STATS_API_BASE = "https://api.warframe.market/v1/items";
-const CONCURRENCY = 5;
+const CONCURRENCY = 3;
 const BATCH_DELAY_MS = 500;
 const MAX_RETRIES = 3;
 const DAYS_TO_KEEP = 7;
