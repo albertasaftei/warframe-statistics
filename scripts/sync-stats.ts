@@ -1,13 +1,16 @@
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { lt } from "drizzle-orm";
+import { lt, sql } from "drizzle-orm";
 import * as schema from "../lib/db/schema";
 
 const STATS_API_BASE = "https://api.warframe.market/v1/items";
 const CONCURRENCY = 3;
-const BATCH_DELAY_MS = 500;
+const MIN_REQUEST_INTERVAL_MS = 400;
 const MAX_RETRIES = 3;
 const DAYS_TO_KEEP = 7;
+
+let requestQueue: Promise<void> = Promise.resolve();
+let lastRequestStartedAt = 0;
 
 interface StatEntry {
   datetime: string;
@@ -40,6 +43,8 @@ interface AggregatedStat {
   median: number;
   movingAvg: number;
 }
+
+class ApiAccessDeniedError extends Error {}
 
 function getDateString(datetime: string): string {
   return datetime.split("T")[0];
@@ -111,26 +116,69 @@ async function fetchWithRetry(
   retries = MAX_RETRIES,
 ): Promise<Response> {
   for (let attempt = 1; attempt <= retries; attempt++) {
-    const response = await fetch(url);
+    await waitForRequestSlot();
 
-    if (response.ok) return response;
+    let response: Response;
+    try {
+      response = await fetch(url);
+    } catch (error) {
+      if (attempt === retries) throw error;
 
-    if (response.status === 429) {
-      const retryAfter = parseInt(response.headers.get("retry-after") ?? "5");
-      const backoff = retryAfter * 1000 * attempt;
       console.warn(
-        `Rate limited, backing off ${backoff}ms (attempt ${attempt}/${retries})`,
+        `Request failed, retrying in ${1000 * attempt}ms (attempt ${attempt}/${retries}): ${url}`,
       );
-      await sleep(backoff);
+      await sleep(1000 * attempt);
       continue;
+    }
+
+    if (response.ok || (response.status !== 429 && response.status < 500)) {
+      return response;
     }
 
     if (attempt === retries) return response;
 
-    await sleep(1000 * attempt);
+    const backoff =
+      response.status === 429
+        ? getRateLimitBackoff(response, attempt)
+        : 1000 * attempt;
+    console.warn(
+      `${response.status === 429 ? "Rate limited" : `Server error ${response.status}`}, backing off ${backoff}ms (attempt ${attempt}/${retries})`,
+    );
+    await sleep(backoff);
   }
 
   throw new Error(`Failed after ${retries} attempts: ${url}`);
+}
+
+async function waitForRequestSlot(): Promise<void> {
+  const previous = requestQueue;
+  let release!: () => void;
+  requestQueue = new Promise((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+  const waitMs = Math.max(
+    0,
+    MIN_REQUEST_INTERVAL_MS - (Date.now() - lastRequestStartedAt),
+  );
+  if (waitMs > 0) await sleep(waitMs);
+
+  lastRequestStartedAt = Date.now();
+  release();
+}
+
+function getRateLimitBackoff(response: Response, attempt: number): number {
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+
+    const retryAt = Date.parse(retryAfter);
+    if (Number.isFinite(retryAt)) return Math.max(0, retryAt - Date.now());
+  }
+
+  return 5000 * attempt;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -175,6 +223,8 @@ async function main() {
 
   for (let i = 0; i < allItems.length; i += CONCURRENCY) {
     const batch = allItems.slice(i, i + CONCURRENCY);
+    const statsToWrite: (typeof schema.dailyStats.$inferInsert)[] = [];
+    let accessDenied = false;
 
     const results = await Promise.allSettled(
       batch.map(async (item) => {
@@ -182,10 +232,14 @@ async function main() {
         const response = await fetchWithRetry(url);
 
         if (!response.ok) {
-          console.warn(
-            `Failed to fetch stats for ${item.slug}: ${response.status}`,
-          );
-          return 0;
+          const responseText = await response.text();
+          const detail = responseText ? `: ${responseText.slice(0, 300)}` : "";
+          const message = `Failed to fetch stats for ${item.slug}: ${response.status} ${response.statusText}${detail}`;
+
+          if (response.status === 403) {
+            throw new ApiAccessDeniedError(message);
+          }
+          throw new Error(message);
         }
 
         const json: StatsResponse = await response.json();
@@ -195,54 +249,58 @@ async function main() {
           (e) => getDateString(e.datetime) >= cutoffDate,
         );
 
-        if (recentEntries.length === 0) return 0;
+        if (recentEntries.length === 0) return [];
 
         const aggregated = aggregateByDateAndRank(recentEntries);
 
-        for (const stat of aggregated) {
-          await db
-            .insert(schema.dailyStats)
-            .values({
-              itemId: item.id,
-              date: stat.date,
-              modRank: stat.modRank,
-              volume: stat.volume,
-              minPrice: stat.minPrice.toString(),
-              maxPrice: stat.maxPrice.toString(),
-              avgPrice: stat.avgPrice.toString(),
-              waPrice: stat.waPrice.toString(),
-              median: stat.median.toString(),
-              movingAvg: stat.movingAvg.toString(),
-            })
-            .onConflictDoUpdate({
-              target: [
-                schema.dailyStats.itemId,
-                schema.dailyStats.date,
-                schema.dailyStats.modRank,
-              ],
-              set: {
-                volume: stat.volume,
-                minPrice: stat.minPrice.toString(),
-                maxPrice: stat.maxPrice.toString(),
-                avgPrice: stat.avgPrice.toString(),
-                waPrice: stat.waPrice.toString(),
-                median: stat.median.toString(),
-                movingAvg: stat.movingAvg.toString(),
-              },
-            });
-        }
-
-        return aggregated.length;
+        return aggregated.map((stat) => ({
+          itemId: item.id,
+          date: stat.date,
+          modRank: stat.modRank,
+          volume: stat.volume,
+          minPrice: stat.minPrice.toString(),
+          maxPrice: stat.maxPrice.toString(),
+          avgPrice: stat.avgPrice.toString(),
+          waPrice: stat.waPrice.toString(),
+          median: stat.median.toString(),
+          movingAvg: stat.movingAvg.toString(),
+        }));
       }),
     );
 
     for (const result of results) {
       if (result.status === "fulfilled") {
-        totalStatsWritten += result.value;
+        statsToWrite.push(...result.value);
       } else {
         errors++;
         console.error("Batch item error:", result.reason);
+        if (result.reason instanceof ApiAccessDeniedError) {
+          accessDenied = true;
+        }
       }
+    }
+
+    if (statsToWrite.length > 0) {
+      await db
+        .insert(schema.dailyStats)
+        .values(statsToWrite)
+        .onConflictDoUpdate({
+          target: [
+            schema.dailyStats.itemId,
+            schema.dailyStats.date,
+            schema.dailyStats.modRank,
+          ],
+          set: {
+            volume: sql`excluded.volume`,
+            minPrice: sql`excluded.min_price`,
+            maxPrice: sql`excluded.max_price`,
+            avgPrice: sql`excluded.avg_price`,
+            waPrice: sql`excluded.wa_price`,
+            median: sql`excluded.median`,
+            movingAvg: sql`excluded.moving_avg`,
+          },
+        });
+      totalStatsWritten += statsToWrite.length;
     }
 
     processed += batch.length;
@@ -252,8 +310,9 @@ async function main() {
       );
     }
 
-    if (i + CONCURRENCY < allItems.length) {
-      await sleep(BATCH_DELAY_MS);
+    if (accessDenied) {
+      console.error("Stopping sync after an API 403 response.");
+      break;
     }
   }
 
@@ -261,6 +320,10 @@ async function main() {
   console.log(`  Items processed: ${processed}`);
   console.log(`  Stat rows written: ${totalStatsWritten}`);
   console.log(`  Errors: ${errors}`);
+
+  if (errors > 0) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((err) => {
