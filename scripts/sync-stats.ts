@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { lt, sql } from "drizzle-orm";
 import * as schema from "../lib/db/schema";
 
-const STATS_API_BASE = "https://api.warframe.market/v2/items";
+const STATS_API_BASE = "https://api.warframe.market/v1/items";
 const CONCURRENCY = 3;
 const MIN_REQUEST_INTERVAL_MS = 400;
 const MAX_RETRIES = 3;
