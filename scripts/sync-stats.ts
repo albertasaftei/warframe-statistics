@@ -232,9 +232,36 @@ async function main() {
         const response = await fetchWithRetry(url);
 
         if (!response.ok) {
-          const responseText = await response.text();
-          const detail = responseText ? `: ${responseText.slice(0, 300)}` : "";
-          const message = `Failed to fetch stats for ${item.slug}: ${response.status} ${response.statusText}${detail}`;
+          const contentType = response.headers.get("content-type");
+          const mitigation = response.headers.get("cf-mitigated");
+          const rayId = response.headers.get("cf-ray");
+          const retryAfter = response.headers.get("retry-after");
+          const responseText = await response.text().catch(() => null);
+          const html = contentType?.includes("text/html") ||
+            /^\s*<(?:!doctype\s+html|html\b)/i.test(responseText ?? "");
+          const challengeTitle = html &&
+            /<title>\s*Just a moment(?:\.{3}|…)\s*<\/title>/i.test(responseText ?? "");
+          const details = [
+            `GET ${url}`,
+            contentType && `Content-Type: ${contentType}`,
+            mitigation && `CF-Mitigated: ${mitigation}`,
+            rayId && `CF-Ray: ${rayId}`,
+            retryAfter && `Retry-After: ${retryAfter}`,
+          ].filter(Boolean);
+
+          if (mitigation === "challenge") {
+            details.push("Cloudflare returned a browser challenge instead of API data. The sync uses Node.js fetch and cannot complete the browser challenge.");
+          } else if (challengeTitle) {
+            details.push('Received an HTML page titled "Just a moment...", which suggests a browser challenge.');
+          } else if (html) {
+            details.push("Received an HTML error page from the endpoint.");
+          } else if (responseText === null) {
+            details.push("Could not read the response body.");
+          } else if (responseText) {
+            details.push(`Body preview: ${JSON.stringify(responseText.slice(0, 300))}${responseText.length > 300 ? " (truncated)" : ""}`);
+          }
+          const status = [response.status, response.statusText].filter(Boolean).join(" ");
+          const message = `Failed to fetch stats for ${item.slug}: ${status}\n  ${details.join("\n  ")}`;
 
           if (response.status === 403) {
             throw new ApiAccessDeniedError(message);
