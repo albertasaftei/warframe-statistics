@@ -3,14 +3,10 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { lt, sql } from "drizzle-orm";
 import * as schema from "../lib/db/schema";
 
-const STATS_API_BASE = "https://api.warframe.market/v1/items";
-const CONCURRENCY = 3;
-const MIN_REQUEST_INTERVAL_MS = 400;
-const MAX_RETRIES = 3;
+const HISTORY_BASE = "https://relics.run/history";
 const DAYS_TO_KEEP = 7;
-
-let requestQueue: Promise<void> = Promise.resolve();
-let lastRequestStartedAt = 0;
+const DOWNLOAD_TIMEOUT_MS = 30_000;
+const WRITE_BATCH_SIZE = 500;
 
 interface StatEntry {
   datetime: string;
@@ -20,16 +16,9 @@ interface StatEntry {
   avg_price: number;
   wa_price: number;
   median: number;
-  moving_avg: number;
-  mod_rank?: number;
-}
-
-interface StatsResponse {
-  payload: {
-    statistics_closed: {
-      "90days": StatEntry[];
-    };
-  };
+  moving_avg?: number | null;
+  item_id: string;
+  mod_rank?: number | null;
 }
 
 interface AggregatedStat {
@@ -41,44 +30,28 @@ interface AggregatedStat {
   avgPrice: number;
   waPrice: number;
   median: number;
-  movingAvg: number;
+  movingAvg: number | null;
 }
 
-class ApiAccessDeniedError extends Error {}
-
-function getDateString(datetime: string): string {
-  return datetime.split("T")[0];
-}
-
-function getCutoffDate(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - DAYS_TO_KEEP);
-  return d.toISOString().split("T")[0];
-}
-
-function aggregateByDateAndRank(entries: StatEntry[]): AggregatedStat[] {
+function aggregateByRank(entries: StatEntry[], date: string): AggregatedStat[] {
   // If any entry has a mod_rank, this is a ranked item.
   // Filter out rank-less entries for ranked items — those are summary/legacy rows.
   const hasRanks = entries.some((e) => e.mod_rank != null);
   const working = hasRanks ? entries.filter((e) => e.mod_rank != null) : entries;
 
-  // Group by (date, mod_rank) — use -1 as sentinel for items with no rank system
-  const groups = new Map<string, StatEntry[]>();
+  // Entries are already scoped to one item and UTC date.
+  const groups = new Map<number, StatEntry[]>();
 
   for (const entry of working) {
-    const date = getDateString(entry.datetime);
     const rank = entry.mod_rank ?? -1;
-    const key = `${date}|${rank}`;
-    const existing = groups.get(key) ?? [];
+    const existing = groups.get(rank) ?? [];
     existing.push(entry);
-    groups.set(key, existing);
+    groups.set(rank, existing);
   }
 
   const aggregated: AggregatedStat[] = [];
 
-  for (const [, groupEntries] of groups) {
-    const date = getDateString(groupEntries[0].datetime);
-    const modRank = groupEntries[0].mod_rank ?? -1;
+  for (const [modRank, groupEntries] of groups) {
     const totalVolume = groupEntries.reduce((sum, e) => sum + e.volume, 0);
     if (totalVolume === 0) continue;
 
@@ -86,13 +59,17 @@ function aggregateByDateAndRank(entries: StatEntry[]): AggregatedStat[] {
     let weightedMedian = 0;
     let weightedAvgPrice = 0;
     let weightedMovingAvg = 0;
+    let movingAvgVolume = 0;
 
     for (const e of groupEntries) {
       const weight = e.volume / totalVolume;
       weightedWaPrice += e.wa_price * weight;
       weightedMedian += e.median * weight;
       weightedAvgPrice += e.avg_price * weight;
-      weightedMovingAvg += e.moving_avg * weight;
+      if (e.moving_avg != null) {
+        weightedMovingAvg += e.moving_avg * e.volume;
+        movingAvgVolume += e.volume;
+      }
     }
 
     aggregated.push({
@@ -104,256 +81,156 @@ function aggregateByDateAndRank(entries: StatEntry[]): AggregatedStat[] {
       avgPrice: Math.round(weightedAvgPrice * 1000) / 1000,
       waPrice: Math.round(weightedWaPrice * 1000) / 1000,
       median: Math.round(weightedMedian * 1000) / 1000,
-      movingAvg: Math.round(weightedMovingAvg * 1000) / 1000,
+      movingAvg: movingAvgVolume > 0
+        ? Math.round((weightedMovingAvg / movingAvgVolume) * 1000) / 1000
+        : null,
     });
   }
 
   return aggregated;
 }
 
-async function fetchWithRetry(
-  url: string,
-  retries = MAX_RETRIES,
-): Promise<Response> {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    await waitForRequestSlot();
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-    let response: Response;
-    try {
-      response = await fetch(url);
-    } catch (error) {
-      if (attempt === retries) throw error;
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
 
-      console.warn(
-        `Request failed, retrying in ${1000 * attempt}ms (attempt ${attempt}/${retries}): ${url}`,
-      );
-      await sleep(1000 * attempt);
-      continue;
-    }
+function isClosedStat(row: Record<string, unknown>): row is Record<string, unknown> & StatEntry {
+  return typeof row.item_id === "string" && row.item_id.length > 0 &&
+    isFiniteNumber(row.volume) && Number.isInteger(row.volume) && row.volume >= 0 &&
+    isFiniteNumber(row.min_price) && isFiniteNumber(row.max_price) &&
+    isFiniteNumber(row.avg_price) && isFiniteNumber(row.wa_price) &&
+    isFiniteNumber(row.median) &&
+    (row.moving_avg == null || isFiniteNumber(row.moving_avg)) &&
+    (row.mod_rank == null ||
+      (isFiniteNumber(row.mod_rank) && Number.isInteger(row.mod_rank) && row.mod_rank >= 0));
+}
 
-    if (response.ok || (response.status !== 429 && response.status < 500)) {
-      return response;
-    }
-
-    if (attempt === retries) return response;
-
-    const backoff =
-      response.status === 429
-        ? getRateLimitBackoff(response, attempt)
-        : 1000 * attempt;
-    console.warn(
-      `${response.status === 429 ? "Rate limited" : `Server error ${response.status}`}, backing off ${backoff}ms (attempt ${attempt}/${retries})`,
-    );
-    await sleep(backoff);
+function parseHistory(data: unknown, date: string): Map<string, StatEntry[]> {
+  if (!isObject(data) || Object.keys(data).length === 0) {
+    throw new Error("Expected a non-empty object of item histories");
   }
 
-  throw new Error(`Failed after ${retries} attempts: ${url}`);
-}
+  const byItem = new Map<string, StatEntry[]>();
+  for (const [name, records] of Object.entries(data)) {
+    if (!Array.isArray(records)) throw new Error(`Invalid history for ${name}`);
 
-async function waitForRequestSlot(): Promise<void> {
-  const previous = requestQueue;
-  let release!: () => void;
-  requestQueue = new Promise((resolve) => {
-    release = resolve;
-  });
+    for (const row of records) {
+      if (!isObject(row) || typeof row.datetime !== "string") {
+        throw new Error(`Invalid history record for ${name}`);
+      }
+      const timestamp = Date.parse(row.datetime);
+      if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== date) {
+        throw new Error(`Unexpected timestamp for ${name}: ${row.datetime}`);
+      }
+      if (row.order_type === "buy" || row.order_type === "sell") continue;
+      if (row.order_type !== "closed" || !isClosedStat(row)) {
+        throw new Error(`Invalid trade record for ${name}`);
+      }
 
-  await previous;
-  const waitMs = Math.max(
-    0,
-    MIN_REQUEST_INTERVAL_MS - (Date.now() - lastRequestStartedAt),
-  );
-  if (waitMs > 0) await sleep(waitMs);
-
-  lastRequestStartedAt = Date.now();
-  release();
-}
-
-function getRateLimitBackoff(response: Response, attempt: number): number {
-  const retryAfter = response.headers.get("retry-after");
-  if (retryAfter) {
-    const seconds = Number(retryAfter);
-    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
-
-    const retryAt = Date.parse(retryAfter);
-    if (Number.isFinite(retryAt)) return Math.max(0, retryAt - Date.now());
+      const entries = byItem.get(row.item_id) ?? [];
+      entries.push(row);
+      byItem.set(row.item_id, entries);
+    }
   }
-
-  return 5000 * attempt;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return byItem;
 }
 
 async function main() {
-  const postgresUrl = process.env.POSTGRES_URL;
-  if (!postgresUrl) {
-    console.error("POSTGRES_URL environment variable is required");
-    process.exit(1);
-  }
+  const postgresUrl = "postgresql://neondb_owner:npg_1yYCaxPLZDq6@ep-fancy-cherry-asajv3yr-pooler.c-4.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
+  if (!postgresUrl) throw new Error("POSTGRES_URL environment variable is required");
 
-  const neonClient = neon(postgresUrl);
-  const db = drizzle(neonClient, { schema });
+  const db = drizzle(neon(postgresUrl), { schema });
+  const catalog = await db.select({ id: schema.items.id }).from(schema.items);
+  if (catalog.length === 0) throw new Error("No items found. Run sync-items first.");
+  const itemIds = new Set(catalog.map(({ id }) => id));
 
-  console.log("Reading items from database...");
-  const allItems = await db
-    .select({ id: schema.items.id, slug: schema.items.slug })
-    .from(schema.items);
-
-  console.log(`Found ${allItems.length} items in database`);
-  if (allItems.length === 0) {
-    console.log("No items found. Run sync-items first.");
-    process.exit(0);
-  }
-
-  const cutoffDate = getCutoffDate();
-  console.log(
-    `Fetching stats for the last ${DAYS_TO_KEEP} days (since ${cutoffDate})`,
+  const today = new Date();
+  const dates = Array.from({ length: DAYS_TO_KEEP }, (_, index) =>
+    new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - index - 1))
+      .toISOString().slice(0, 10),
   );
 
-  // Delete rows older than the retention window to keep the table lean
-  await db
-    .delete(schema.dailyStats)
-    .where(lt(schema.dailyStats.date, cutoffDate));
-  console.log(`Deleted stale rows older than ${cutoffDate}`);
+  let failed = 0;
+  let pending = false;
+  for (const [index, date] of dates.entries()) {
+    try {
+      const url = `${HISTORY_BASE}/price_history_${date}.json`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+      if (index === 0 && response.status === 404) {
+        console.log(`${date}: pending publication (HTTP 404). The next scheduled run will retry.`);
+        pending = true;
+        continue;
+      }
+      if (!response.ok) throw new Error(`GET ${url} returned HTTP ${response.status}`);
 
-  let processed = 0;
-  let totalStatsWritten = 0;
-  let errors = 0;
-
-  for (let i = 0; i < allItems.length; i += CONCURRENCY) {
-    const batch = allItems.slice(i, i + CONCURRENCY);
-    const statsToWrite: (typeof schema.dailyStats.$inferInsert)[] = [];
-    let accessDenied = false;
-
-    const results = await Promise.allSettled(
-      batch.map(async (item) => {
-        const url = `${STATS_API_BASE}/${item.slug}/statistics`;
-        const response = await fetchWithRetry(url);
-
-        if (!response.ok) {
-          const contentType = response.headers.get("content-type");
-          const mitigation = response.headers.get("cf-mitigated");
-          const rayId = response.headers.get("cf-ray");
-          const retryAfter = response.headers.get("retry-after");
-          const responseText = await response.text().catch(() => null);
-          const html = contentType?.includes("text/html") ||
-            /^\s*<(?:!doctype\s+html|html\b)/i.test(responseText ?? "");
-          const challengeTitle = html &&
-            /<title>\s*Just a moment(?:\.{3}|…)\s*<\/title>/i.test(responseText ?? "");
-          const details = [
-            `GET ${url}`,
-            contentType && `Content-Type: ${contentType}`,
-            mitigation && `CF-Mitigated: ${mitigation}`,
-            rayId && `CF-Ray: ${rayId}`,
-            retryAfter && `Retry-After: ${retryAfter}`,
-          ].filter(Boolean);
-
-          if (mitigation === "challenge") {
-            details.push("Cloudflare returned a browser challenge instead of API data. The sync uses Node.js fetch and cannot complete the browser challenge.");
-          } else if (challengeTitle) {
-            details.push('Received an HTML page titled "Just a moment...", which suggests a browser challenge.');
-          } else if (html) {
-            details.push("Received an HTML error page from the endpoint.");
-          } else if (responseText === null) {
-            details.push("Could not read the response body.");
-          } else if (responseText) {
-            details.push(`Body preview: ${JSON.stringify(responseText.slice(0, 300))}${responseText.length > 300 ? " (truncated)" : ""}`);
-          }
-          const status = [response.status, response.statusText].filter(Boolean).join(" ");
-          const message = `Failed to fetch stats for ${item.slug}: ${status}\n  ${details.join("\n  ")}`;
-
-          if (response.status === 403) {
-            throw new ApiAccessDeniedError(message);
-          }
-          throw new Error(message);
+      const byItem = parseHistory(await response.json(), date);
+      const rows: schema.NewDailyStat[] = [];
+      const unmatchedIds: string[] = [];
+      for (const [itemId, entries] of byItem) {
+        if (!itemIds.has(itemId)) {
+          unmatchedIds.push(itemId);
+          continue;
         }
 
-        const json: StatsResponse = await response.json();
-        const entries = json.payload?.statistics_closed?.["90days"] ?? [];
-
-        const recentEntries = entries.filter(
-          (e) => getDateString(e.datetime) >= cutoffDate,
-        );
-
-        if (recentEntries.length === 0) return [];
-
-        const aggregated = aggregateByDateAndRank(recentEntries);
-
-        return aggregated.map((stat) => ({
-          itemId: item.id,
-          date: stat.date,
-          modRank: stat.modRank,
-          volume: stat.volume,
-          minPrice: stat.minPrice.toString(),
-          maxPrice: stat.maxPrice.toString(),
-          avgPrice: stat.avgPrice.toString(),
-          waPrice: stat.waPrice.toString(),
-          median: stat.median.toString(),
-          movingAvg: stat.movingAvg.toString(),
-        }));
-      }),
-    );
-
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        statsToWrite.push(...result.value);
-      } else {
-        errors++;
-        console.error("Batch item error:", result.reason);
-        if (result.reason instanceof ApiAccessDeniedError) {
-          accessDenied = true;
+        for (const stat of aggregateByRank(entries, date)) {
+          rows.push({
+            itemId,
+            date,
+            modRank: stat.modRank,
+            volume: stat.volume,
+            minPrice: stat.minPrice.toString(),
+            maxPrice: stat.maxPrice.toString(),
+            avgPrice: stat.avgPrice.toString(),
+            waPrice: stat.waPrice.toString(),
+            median: stat.median.toString(),
+            movingAvg: stat.movingAvg?.toString() ?? null,
+          });
         }
       }
-    }
 
-    if (statsToWrite.length > 0) {
-      await db
-        .insert(schema.dailyStats)
-        .values(statsToWrite)
-        .onConflictDoUpdate({
-          target: [
-            schema.dailyStats.itemId,
-            schema.dailyStats.date,
-            schema.dailyStats.modRank,
-          ],
-          set: {
-            volume: sql`excluded.volume`,
-            minPrice: sql`excluded.min_price`,
-            maxPrice: sql`excluded.max_price`,
-            avgPrice: sql`excluded.avg_price`,
-            waPrice: sql`excluded.wa_price`,
-            median: sql`excluded.median`,
-            movingAvg: sql`excluded.moving_avg`,
-          },
-        });
-      totalStatsWritten += statsToWrite.length;
-    }
-
-    processed += batch.length;
-    if (processed % 50 === 0 || processed === allItems.length) {
-      console.log(
-        `Progress: ${processed}/${allItems.length} items | ${totalStatsWritten} stat rows written | ${errors} errors`,
-      );
-    }
-
-    if (accessDenied) {
-      console.error("Stopping sync after an API 403 response.");
-      break;
+      const writes = [];
+      for (let offset = 0; offset < rows.length; offset += WRITE_BATCH_SIZE) {
+        writes.push(db.insert(schema.dailyStats)
+          .values(rows.slice(offset, offset + WRITE_BATCH_SIZE))
+          .onConflictDoUpdate({
+            target: [schema.dailyStats.itemId, schema.dailyStats.date, schema.dailyStats.modRank],
+            set: {
+              volume: sql`excluded.volume`,
+              minPrice: sql`excluded.min_price`,
+              maxPrice: sql`excluded.max_price`,
+              avgPrice: sql`excluded.avg_price`,
+              waPrice: sql`excluded.wa_price`,
+              median: sql`excluded.median`,
+              movingAvg: sql`excluded.moving_avg`,
+            },
+          }));
+      }
+      const [first, ...rest] = writes;
+      if (first) await db.batch([first, ...rest]);
+      if (unmatchedIds.length) {
+        console.warn(`${date}: ${unmatchedIds.length} unmatched item IDs (first 10: ${unmatchedIds.slice(0, 10).join(", ")})`);
+      }
+      console.log(`${date}: imported ${rows.length} stat rows from ${byItem.size} items with closed trades`);
+    } catch (error) {
+      failed++;
+      console.error(`${date}: import failed:`, error);
     }
   }
 
-  console.log(`\nSync complete:`);
-  console.log(`  Items processed: ${processed}`);
-  console.log(`  Stat rows written: ${totalStatsWritten}`);
-  console.log(`  Errors: ${errors}`);
-
-  if (errors > 0) {
-    process.exitCode = 1;
+  if (!failed && !pending) {
+    const cutoff = dates[dates.length - 1];
+    await db.delete(schema.dailyStats).where(lt(schema.dailyStats.date, cutoff));
+    console.log(`Pruned stat rows older than ${cutoff}`);
   }
+
+  if (failed) process.exitCode = 1;
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
+main().catch((error) => {
+  console.error("Stats sync failed:", error);
+  process.exitCode = 1;
 });
